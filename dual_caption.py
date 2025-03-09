@@ -8,8 +8,6 @@ client = AsyncOpenAI()
 parser = argparse.ArgumentParser()
 
 parser.add_argument("filename", type=str)
-parser.add_argument("lang_a", type=str)
-parser.add_argument("lang_b", type=str)
 
 args = parser.parse_args()
 
@@ -43,9 +41,9 @@ def save_srt(raw_srt: str, filename: str = "dual.srt") -> None:
 
 
 def create_prompt(
-    lang_a: str, lang_b: str, line: str, last_line: str, next_line: str
+    line: str, last_line: str, next_line: str
 ) -> str:
-    return f"""Given the context "{last_line} {line} {next_line}", translate this {lang_a} subtitle to {lang_b}:\n{line}"""
+    return f"""Given the context "{last_line} {line} {next_line}", translate the following text to Chinese if it's English or to English if it's Chinese:\n{line}"""
 
 
 def create_instruction() -> str:
@@ -87,7 +85,7 @@ async def async_main(raw_srt: str):
         last_line = lines[i - 1] if i > 0 else ""
         line = lines[i]
         next_line = lines[i + 1] if i < len(lines) - 1 else ""
-        prompt = create_prompt(args.lang_a, args.lang_b, line, last_line, next_line)
+        prompt = create_prompt(line, last_line, next_line)
         task = asyncio.create_task(get_answer(instruction, prompt))
         tasks.append(task)
     results = await asyncio.gather(*tasks)
