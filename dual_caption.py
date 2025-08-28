@@ -1,6 +1,6 @@
 import time
 import argparse
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI
 import srt
 import asyncio
 
@@ -40,10 +40,8 @@ def save_srt(raw_srt: str, filename: str = "dual.srt") -> None:
         f.write(raw_srt)
 
 
-def create_prompt(
-    line: str, last_line: str, next_line: str
-) -> str:
-    return f"""Given the context "{last_line} {line} {next_line}", translate the following text to Chinese if it's English or to English if it's Chinese:\n{line}"""
+def create_prompt(line: str, context: str) -> str:
+    return f"""Given the context "{context}", translate the following text to Chinese if it's English or to English if it's Chinese:\n{line}"""
 
 
 def create_instruction() -> str:
@@ -56,9 +54,7 @@ def count_words(content: str) -> str:
 
 async def get_answer(instruction: str, prompt: str):
     response = await client.chat.completions.create(
-        # model="gpt-3.5-turbo-0125",
-        model="gpt-4o-mini",
-        # model="gpt-4-turbo-2024-04-09",
+        model="gpt-4.1-2025-04-14",
         messages=[
             {"role": "system", "content": instruction},
             {"role": "user", "content": prompt},
@@ -82,14 +78,22 @@ async def async_main(raw_srt: str):
             total_results += results
             tasks = []
             time.sleep(62)
-        last_line = lines[i - 1] if i > 0 else ""
         line = lines[i]
-        next_line = lines[i + 1] if i < len(lines) - 1 else ""
-        prompt = create_prompt(line, last_line, next_line)
+        # Collect up to two previous and two next lines
+        start = max(0, i - 2)
+        end = min(len(lines), i + 3)  # +3 because slice end is exclusive
+        context_lines = lines[start:end]
+
+        # Build context (includes up to 5 lines: prev2, prev1, current, next1, next2)
+        context = "\n".join(context_lines)
+
+        prompt = create_prompt(line, context)
         task = asyncio.create_task(get_answer(instruction, prompt))
         tasks.append(task)
+
     results = await asyncio.gather(*tasks)
     total_results += results
+
     total_usage = 0
     lines = []
     for line, usage in total_results:
