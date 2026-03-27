@@ -1,3 +1,10 @@
+"""
+Generate English Chinese dual language subtitles.
+
+Usage:
+python dual_caption.py <filename>
+"""
+
 import re
 import time
 import argparse
