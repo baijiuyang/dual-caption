@@ -8,10 +8,13 @@ python dual_caption.py <filename>
 import re
 import time
 import argparse
+from pathlib import Path
 from openai import AsyncOpenAI
 from openai import RateLimitError
 import srt
 import asyncio
+
+MODEL = "gpt-4.1-2025-04-14"
 
 client = AsyncOpenAI()
 parser = argparse.ArgumentParser()
@@ -21,44 +24,39 @@ parser.add_argument("filename", type=str)
 args = parser.parse_args()
 
 
-def get_content_from_srt(raw_srt: str) -> list[str]:
-    sub_generator = srt.parse(raw_srt)
-    subs = list(sub_generator)
-    lines = []
-    for line in subs:
-        lines.append(line.content)
-    return lines
+def load_subs(filename: str) -> list[srt.Subtitle]:
+    with open(filename, "r", encoding="utf8") as f:
+        return list(srt.parse(f.read()))
 
 
-def add_second_subtitles(raw_srt: str, lines: list[str]) -> str:
-    sub_generator = srt.parse(raw_srt)
-    subs = list(sub_generator)
+def add_second_subtitles(subs: list[srt.Subtitle], lines: list[str]) -> str:
     for sub, line in zip(subs, lines):
         sub.content += f"\n{line}"
     return srt.compose(subs)
 
 
-def load_srt(filename: str) -> str:
-    with open(filename, "r", encoding="utf8") as f:
-        raw_srt = f.read()
-    return raw_srt
-
-
-def save_srt(raw_srt: str, filename: str = "dual.srt") -> None:
+def save_srt(raw_srt: str, filename: str) -> None:
     with open(filename, "w", encoding="utf8") as f:
         f.write(raw_srt)
 
 
-def create_prompt(line: str, context: str) -> str:
-    return f"""Given the context from two previous lines to two next lines "{context}", translate the below text to Chinese if it's English or to English if it's Chinese. Make sure to (1) correct any grammarly mistake since it's a biking vlog, (2) be faithfuly to the original meaning not verbatim translation, (3) only return the translated sentence, nothing else.\n{line}"""
+def create_prompt(context_lines: list[str], target_idx: int) -> str:
+    marked = [
+        f">>> {line} <<<" if i == target_idx else line
+        for i, line in enumerate(context_lines)
+    ]
+    block = "\n".join(marked)
+    return (
+        "Translate the line marked with >>> <<< to Chinese if it's English, or to "
+        "English if it's Chinese. The unmarked lines are surrounding context only — "
+        "do not translate them. Be faithful to the original meaning rather than "
+        "verbatim. Return only the translated sentence, nothing else.\n\n"
+        f"Context (biking vlog):\n{block}"
+    )
 
 
 def create_instruction() -> str:
     return "You are a subtitles translator."
-
-
-def count_words(content: str) -> str:
-    return content.count(" ")
 
 
 def _parse_retry_after(error: RateLimitError) -> float | None:
@@ -86,16 +84,16 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
     for attempt in range(max_retries):
         try:
             response = await client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
+                model=MODEL,
                 messages=[
                     {"role": "system", "content": instruction},
                     {"role": "user", "content": prompt},
                 ],
-                # max_tokens=4096,
                 temperature=0.5,
             )
-            print(response.choices[0].message.content)
-            return response.choices[0].message.content, response.usage.total_tokens
+            content = (response.choices[0].message.content or "").strip().strip('"\'').strip()
+            print(content)
+            return content, response.usage.total_tokens
         except RateLimitError as e:
             if attempt == max_retries - 1:
                 raise
@@ -111,9 +109,10 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
             await asyncio.sleep(wait_time)
 
 
-async def async_main(raw_srt: str):
-    lines = get_content_from_srt(raw_srt)
+async def async_main(subs: list[srt.Subtitle]):
+    lines = [s.content for s in subs]
     instruction = create_instruction()
+    cache: dict[str, asyncio.Task] = {}
     tasks = []
     total_results = []
     for i in range(len(lines)):
@@ -124,40 +123,40 @@ async def async_main(raw_srt: str):
             tasks = []
             time.sleep(62)
         line = lines[i]
+        if line in cache:
+            tasks.append(cache[line])
+            continue
         # Collect up to two previous and two next lines
         start = max(0, i - 2)
         end = min(len(lines), i + 3)  # +3 because slice end is exclusive
         context_lines = lines[start:end]
-
-        # Build context (includes up to 5 lines: prev2, prev1, current, next1, next2)
-        context = "\n".join(context_lines)
-
-        prompt = create_prompt(line, context)
+        target_idx = i - start
+        prompt = create_prompt(context_lines, target_idx)
         task = asyncio.create_task(get_answer(instruction, prompt))
+        cache[line] = task
         tasks.append(task)
 
     results = await asyncio.gather(*tasks)
     total_results += results
 
     total_usage = 0
-    lines = []
+    out_lines = []
     for line, usage in total_results:
-        lines.append(line)
+        out_lines.append(line)
         total_usage += usage
 
     print(f"total token used: {total_usage}")
 
-    new_srt = add_second_subtitles(raw_srt, lines)
-    save_srt(new_srt, args.filename[:-4] + "_output.srt")
+    new_srt = add_second_subtitles(subs, out_lines)
+    input_path = Path(args.filename)
+    output_path = input_path.with_stem(f"{input_path.stem}_output")
+    save_srt(new_srt, str(output_path))
 
 
 def main():
-    raw_srt = load_srt(args.filename)
-    asyncio.run(async_main(raw_srt))
+    subs = load_subs(args.filename)
+    asyncio.run(async_main(subs))
 
 
 if __name__ == "__main__":
     main()
-    # raw_srt = load_srt("en.srt")
-    # content = get_content_from_srt(raw_srt)
-    # print(content)
