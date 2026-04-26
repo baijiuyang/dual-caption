@@ -19,7 +19,7 @@ from pathlib import Path
 
 import srt
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, BadRequestError, RateLimitError
 
 MODEL = "gpt-5-mini-2025-08-07"
 CHUNK_SIZE = 30
@@ -229,15 +229,33 @@ async def call_llm(prompt: str, max_retries: int = 10) -> tuple[str, int]:
             if TEMPERATURE is not None:
                 kwargs["temperature"] = TEMPERATURE
 
-            response = await client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": INSTRUCTION},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                **kwargs,
-            )
+            try:
+                response = await client.chat.completions.create(
+                    model=MODEL,
+                    messages=[
+                        {"role": "system", "content": INSTRUCTION},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    **kwargs,
+                )
+            except BadRequestError as e:
+                msg = str(e)
+                if (
+                    "temperature" in msg
+                    and "Only the default (1) value is supported" in msg
+                    and "temperature" in kwargs
+                ):
+                    response = await client.chat.completions.create(
+                        model=MODEL,
+                        messages=[
+                            {"role": "system", "content": INSTRUCTION},
+                            {"role": "user", "content": prompt},
+                        ],
+                        response_format={"type": "json_object"},
+                    )
+                else:
+                    raise
             return response.choices[0].message.content, response.usage.total_tokens
         except RateLimitError as e:
             if attempt == max_retries - 1:

@@ -9,13 +9,15 @@ import re
 import time
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 import srt
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, BadRequestError, RateLimitError
 
 MODEL = "gpt-5-mini-2025-08-07"
+TEMPERATURE = float(_t) if (_t := os.environ.get("OPENAI_TEMPERATURE")) else None
 
 load_dotenv()
 client = AsyncOpenAI()
@@ -75,14 +77,38 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
     base_delay = 1.0
     for attempt in range(max_retries):
         try:
-            response = await client.chat.completions.create(
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": instruction},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.5,
-            )
+            # Some models only support the default temperature. To stay compatible,
+            # we omit `temperature` unless explicitly configured.
+            kwargs = {}
+            if TEMPERATURE is not None:
+                kwargs["temperature"] = TEMPERATURE
+
+            try:
+                response = await client.chat.completions.create(
+                    model=MODEL,
+                    messages=[
+                        {"role": "system", "content": instruction},
+                        {"role": "user", "content": prompt},
+                    ],
+                    **kwargs,
+                )
+            except BadRequestError as e:
+                # If a model rejects non-default temperature, retry once without it.
+                msg = str(e)
+                if (
+                    "temperature" in msg
+                    and "Only the default (1) value is supported" in msg
+                    and "temperature" in kwargs
+                ):
+                    response = await client.chat.completions.create(
+                        model=MODEL,
+                        messages=[
+                            {"role": "system", "content": instruction},
+                            {"role": "user", "content": prompt},
+                        ],
+                    )
+                else:
+                    raise
             content = (
                 (response.choices[0].message.content or "").strip().strip("\"'").strip()
             )

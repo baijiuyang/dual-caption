@@ -1,0 +1,18 @@
+services:
+  app:
+    # Dev mode: mount local code into container so changes apply immediately.
+    volumes:
+      - .:/app
+    # Streamlit file watching can be flaky in Docker on Windows; polling is reliable.
+    command:
+      [
+        "streamlit",
+        "run",
+        "app.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false",
+        "--server.runOnSave=true",
+        "--server.fileWatcherType=poll"
+      ]
