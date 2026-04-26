@@ -18,7 +18,7 @@ from pathlib import Path
 import srt
 from openai import AsyncOpenAI, RateLimitError
 
-MODEL = "gpt-4.1-2025-04-14"
+MODEL = "gpt-5-mini-2025-08-07"
 CHUNK_SIZE = 30
 
 client = AsyncOpenAI()

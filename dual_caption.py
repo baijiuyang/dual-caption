@@ -14,7 +14,7 @@ from openai import RateLimitError
 import srt
 import asyncio
 
-MODEL = "gpt-4.1-2025-04-14"
+MODEL = "gpt-5-mini-2025-08-07"
 
 client = AsyncOpenAI()
 parser = argparse.ArgumentParser()
@@ -60,8 +60,8 @@ def create_instruction() -> str:
 
 
 def _parse_retry_after(error: RateLimitError) -> float | None:
-    """从 RateLimitError 中解析建议的重试等待时间（秒）"""
-    # 1. 尝试从响应头获取 Retry-After
+    """Parse the suggested retry wait time (seconds) from a RateLimitError."""
+    # 1. Try the Retry-After response header
     if hasattr(error, "response") and error.response is not None:
         retry_after = error.response.headers.get("Retry-After")
         if retry_after:
@@ -69,7 +69,7 @@ def _parse_retry_after(error: RateLimitError) -> float | None:
                 return float(retry_after)
             except ValueError:
                 pass
-    # 2. 尝试从错误信息解析 "try again in 266ms" 或 "try again in 30s"
+    # 2. Try parsing the error message for "try again in 266ms" or "try again in 30s"
     err_str = str(error)
     m = re.search(r"try again in (\d+)(ms|s)?", err_str, re.I)
     if m:
@@ -101,7 +101,7 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
             if wait_time is None:
                 wait_time = base_delay * (2**attempt)
             else:
-                # API 返回的时间可能很短，至少等 1 秒
+                # API-suggested wait may be very short; floor at 1 second
                 wait_time = max(wait_time, 1.0)
             print(
                 f"Rate limit reached. Waiting {wait_time:.1f}s before retry ({attempt + 1}/{max_retries})..."
