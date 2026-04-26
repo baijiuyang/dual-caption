@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.env
+.streamlit/secrets.toml
+.claude
+.vscode
+.idea
+*.srt
+LICENSE
+README.md
+sequential.py

@@ -1,0 +1,28 @@
+[project]
+name = "dual-caption"
+version = "0.1.0"
+description = "Generate dual-language subtitles and fix fragmented sentences in SRT files."
+requires-python = ">=3.10"
+dependencies = [
+    "openai",
+    "srt",
+    "streamlit",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "uv",
+]
+
+[project.scripts]
+fix-srt = "fix_srt:main"
+dual-caption = "dual_caption:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["app", "dual_caption", "fix_srt"]

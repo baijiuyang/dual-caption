@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    image: dual-caption
+    container_name: dual-caption
+    ports:
+      - "8501:8501"
+    env_file: .env

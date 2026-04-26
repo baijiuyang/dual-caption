@@ -8,25 +8,17 @@ python dual_caption.py <filename>
 import re
 import time
 import argparse
-from pathlib import Path
-from openai import AsyncOpenAI
-from openai import RateLimitError
-import srt
 import asyncio
+from pathlib import Path
+
+import srt
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, RateLimitError
 
 MODEL = "gpt-5-mini-2025-08-07"
 
+load_dotenv()
 client = AsyncOpenAI()
-parser = argparse.ArgumentParser()
-
-parser.add_argument("filename", type=str)
-
-args = parser.parse_args()
-
-
-def load_subs(filename: str) -> list[srt.Subtitle]:
-    with open(filename, "r", encoding="utf8") as f:
-        return list(srt.parse(f.read()))
 
 
 def add_second_subtitles(subs: list[srt.Subtitle], lines: list[str]) -> str:
@@ -91,7 +83,9 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
                 ],
                 temperature=0.5,
             )
-            content = (response.choices[0].message.content or "").strip().strip('"\'').strip()
+            content = (
+                (response.choices[0].message.content or "").strip().strip("\"'").strip()
+            )
             print(content)
             return content, response.usage.total_tokens
         except RateLimitError as e:
@@ -109,7 +103,8 @@ async def get_answer(instruction: str, prompt: str, max_retries: int = 10):
             await asyncio.sleep(wait_time)
 
 
-async def async_main(subs: list[srt.Subtitle]):
+async def add_dual_captions(raw_srt: str) -> str:
+    subs = list(srt.parse(raw_srt))
     lines = [s.content for s in subs]
     instruction = create_instruction()
     cache: dict[str, asyncio.Task] = {}
@@ -144,18 +139,21 @@ async def async_main(subs: list[srt.Subtitle]):
     for line, usage in total_results:
         out_lines.append(line)
         total_usage += usage
-
     print(f"total token used: {total_usage}")
 
-    new_srt = add_second_subtitles(subs, out_lines)
-    input_path = Path(args.filename)
-    output_path = input_path.with_stem(f"{input_path.stem}_output")
-    save_srt(new_srt, str(output_path))
+    return add_second_subtitles(subs, out_lines)
 
 
 def main():
-    subs = load_subs(args.filename)
-    asyncio.run(async_main(subs))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("filename", type=str)
+    args = parser.parse_args()
+
+    input_path = Path(args.filename)
+    raw_srt = input_path.read_text(encoding="utf8")
+    new_srt = asyncio.run(add_dual_captions(raw_srt))
+    output_path = input_path.with_stem(f"{input_path.stem}_output")
+    save_srt(new_srt, str(output_path))
 
 
 if __name__ == "__main__":
