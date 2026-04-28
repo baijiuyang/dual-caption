@@ -34,18 +34,38 @@ def save_srt(raw_srt: str, filename: str) -> None:
         f.write(raw_srt)
 
 
-def create_prompt(context_lines: list[str], target_idx: int) -> str:
+async def summarize_srt(lines: list[str]) -> str:
+    content = "\n".join(lines)
+    instruction = "You are a video content analyst."
+    prompt = (
+        "Below are subtitle lines from a video. Produce a compact structured summary "
+        "to help a translator. Include:\n"
+        "- Setting: location, time, season, or event\n"
+        "- People: names and roles of anyone mentioned\n"
+        "- Events: main narrative arc in 2-3 sentences\n"
+        "- Tone: style of the content (casual vlog, technical, race commentary, etc.)\n"
+        "- Terms: recurring domain-specific words or proper nouns needing consistent translation\n\n"
+        "Be concise. Use bullet points. Do not translate anything.\n\n"
+        f"Subtitles:\n{content}"
+    )
+    summary, _ = await get_answer(instruction, prompt)
+    return summary
+
+
+def create_prompt(context_lines: list[str], target_idx: int, video_summary: str = "") -> str:
     marked = [
         f">>> {line} <<<" if i == target_idx else line
         for i, line in enumerate(context_lines)
     ]
     block = "\n".join(marked)
+    summary_section = f"Video summary:\n{video_summary}\n\n" if video_summary else ""
     return (
         "Translate the line marked with >>> <<< to Chinese if it's English, or to "
         "English if it's Chinese. The unmarked lines are surrounding context only — "
         "do not translate them. Be faithful to the original meaning rather than "
         "verbatim. Return only the translated sentence, nothing else.\n\n"
-        f"Context (biking vlog):\n{block}"
+        f"{summary_section}"
+        f"Lines:\n{block}"
     )
 
 
@@ -133,6 +153,11 @@ async def add_dual_captions(raw_srt: str) -> str:
     subs = list(srt.parse(raw_srt))
     lines = [s.content for s in subs]
     instruction = create_instruction()
+
+    print("Summarizing video content...")
+    video_summary = await summarize_srt(lines)
+    print(f"Video summary:\n{video_summary}\n")
+
     cache: dict[str, asyncio.Task] = {}
     tasks = []
     total_results = []
@@ -152,7 +177,7 @@ async def add_dual_captions(raw_srt: str) -> str:
         end = min(len(lines), i + 3)  # +3 because slice end is exclusive
         context_lines = lines[start:end]
         target_idx = i - start
-        prompt = create_prompt(context_lines, target_idx)
+        prompt = create_prompt(context_lines, target_idx, video_summary)
         task = asyncio.create_task(get_answer(instruction, prompt))
         cache[line] = task
         tasks.append(task)

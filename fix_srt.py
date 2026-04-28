@@ -96,24 +96,49 @@ def _parse_retry_after(error: RateLimitError) -> float | None:
     return None
 
 
-async def call_llm(prompt: str, max_retries: int = 10) -> tuple[str, int]:
+def build_instruction(video_summary: str = "") -> str:
+    if not video_summary:
+        return INSTRUCTION
+    return INSTRUCTION + f"\nVideo summary (use for context when fixing errors):\n{video_summary}\n"
+
+
+async def summarize_srt(lines: list[str]) -> str:
+    content = "\n".join(lines)
+    instruction = "You are a video content analyst."
+    prompt = (
+        "Below are subtitle lines from a video. Produce a compact structured summary "
+        "to help an editor fix grammar and speech recognition errors. Include:\n"
+        "- Setting: location, time, season, or event\n"
+        "- People: names and roles of anyone mentioned\n"
+        "- Events: main narrative arc in 2-3 sentences\n"
+        "- Tone: style of the content (casual vlog, technical, race commentary, etc.)\n"
+        "- Terms: recurring domain-specific words or proper nouns that speech recognition might misrecognize\n\n"
+        "Be concise. Use bullet points.\n\n"
+        f"Subtitles:\n{content}"
+    )
+    summary, _ = await call_llm(instruction, prompt, json_mode=False)
+    return summary
+
+
+async def call_llm(instruction: str, prompt: str, json_mode: bool = True, max_retries: int = 10) -> tuple[str, int]:
     base_delay = 1.0
     for attempt in range(max_retries):
         try:
             # Some models only support the default temperature. To stay compatible,
             # we omit `temperature` unless explicitly configured.
-            kwargs = {}
+            kwargs: dict = {}
             if TEMPERATURE is not None:
                 kwargs["temperature"] = TEMPERATURE
+            if json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
 
             try:
                 response = await client.chat.completions.create(
                     model=MODEL,
                     messages=[
-                        {"role": "system", "content": INSTRUCTION},
+                        {"role": "system", "content": instruction},
                         {"role": "user", "content": prompt},
                     ],
-                    response_format={"type": "json_object"},
                     **kwargs,
                 )
             except BadRequestError as e:
@@ -123,13 +148,14 @@ async def call_llm(prompt: str, max_retries: int = 10) -> tuple[str, int]:
                     and "Only the default (1) value is supported" in msg
                     and "temperature" in kwargs
                 ):
+                    kwargs.pop("temperature")
                     response = await client.chat.completions.create(
                         model=MODEL,
                         messages=[
-                            {"role": "system", "content": INSTRUCTION},
+                            {"role": "system", "content": instruction},
                             {"role": "user", "content": prompt},
                         ],
-                        response_format={"type": "json_object"},
+                        **kwargs,
                     )
                 else:
                     raise
@@ -145,9 +171,9 @@ async def call_llm(prompt: str, max_retries: int = 10) -> tuple[str, int]:
             await asyncio.sleep(wait_time)
 
 
-async def fix_chunk(subs: list[srt.Subtitle], offset: int) -> tuple[list[dict], int]:
+async def fix_chunk(subs: list[srt.Subtitle], offset: int, instruction: str) -> tuple[list[dict], int]:
     numbered = "\n".join(f"[{offset + i}] {s.content}" for i, s in enumerate(subs))
-    raw, tokens = await call_llm(f"Entries:\n{numbered}")
+    raw, tokens = await call_llm(instruction, f"Entries:\n{numbered}")
     groups = json.loads(raw)["groups"]
 
     expected = list(range(offset, offset + len(subs)))
@@ -189,9 +215,16 @@ def chunk_subs(
 
 async def fix_srt(raw_srt: str) -> str:
     subs = list(srt.parse(raw_srt))
+    lines = [s.content for s in subs]
+
+    print("Summarizing video content...")
+    video_summary = await summarize_srt(lines)
+    print(f"Video summary:\n{video_summary}\n")
+
+    instruction = build_instruction(video_summary)
     chunks = chunk_subs(subs)
 
-    results = await asyncio.gather(*(fix_chunk(c, off) for off, c in chunks))
+    results = await asyncio.gather(*(fix_chunk(c, off, instruction) for off, c in chunks))
 
     all_groups = []
     total_tokens = 0
