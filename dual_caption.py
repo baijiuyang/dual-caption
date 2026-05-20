@@ -52,7 +52,9 @@ async def summarize_srt(lines: list[str]) -> str:
     return summary
 
 
-def create_prompt(context_lines: list[str], target_idx: int, video_summary: str = "") -> str:
+def create_prompt(
+    context_lines: list[str], target_idx: int, video_summary: str = ""
+) -> str:
     marked = [
         f">>> {line} <<<" if i == target_idx else line
         for i, line in enumerate(context_lines)

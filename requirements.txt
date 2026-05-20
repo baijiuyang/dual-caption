@@ -1,4 +1,0 @@
-openai
-srt
-streamlit
-python-dotenv

@@ -175,3 +175,6 @@ cython_debug/
 # OS / Editor noise
 Thumbs.db
 Desktop.ini
+
+# Local data (transcripts, audio, reference SRTs)
+data/
