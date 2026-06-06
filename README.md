@@ -29,6 +29,15 @@ speech model, rule‑based + AI line segmentation, and an audio‑synced in‑ap
 correction step do the heavy lifting, so you spend minutes polishing instead of
 hours rebuilding. **~10× less manual subtitle correction.**
 
+The gap is **especially large for challenging audio** — **outdoor footage,
+windy or noisy environments, background traffic or music, and unclear or
+accented speech**. These are exactly the conditions where Premiere Pro's
+built‑in captioner mis‑transcribes the most, and where Dual Caption's
+noise‑robust speech model plus context‑grounded AI cleanup hold up best. If
+you're subtitling **outdoor vlogs, travel/biking/hiking footage, street
+interviews, or any audio that isn't a clean studio recording**, the accuracy
+difference is the most noticeable.
+
 ## Features
 
 A guided four‑step workflow, where each step's output flows straight into the
@@ -48,6 +57,70 @@ next (and every step also offers a download):
 
 Plus a **bilingual UI** (English / 简体中文) that auto‑detects your browser
 language with a one‑click toggle, and a built‑in **feedback** button.
+
+### Step 2 in action — the in‑app correction editor
+
+![Dual Caption Step 2 manual subtitle correction editor: an audio player above a numbered, editable transcript with the line being spoken highlighted, a play‑from‑here button on each line, and a line counter](docs/step2-correction.png)
+
+*Play the audio and the spoken line is highlighted; click ▶ to jump to any line
+and edit the text inline. Word‑level timestamps are preserved as you correct.*
+
+## Sample output
+
+A short clip from an outdoor biking vlog. **Step 3** produces a clean,
+well‑timed English `.srt`:
+
+```srt
+1
+00:03:46,260 --> 00:03:49,020
+Good morning. Hey.
+
+2
+00:03:50,340 --> 00:03:51,120
+It's a new day.
+
+3
+00:03:51,780 --> 00:03:53,340
+I just had a late start.
+
+4
+00:03:55,740 --> 00:03:59,460
+Um, had breakfast. I got golden milk.
+
+5
+00:03:59,640 --> 00:04:01,740
+Tastes so good.
+```
+
+The optional **dual‑subtitle** step then stacks a Chinese translation under each
+original line, keeping the exact same timings:
+
+```srt
+1
+00:03:46,260 --> 00:03:49,020
+Good morning. Hey.
+早上好。嗨。
+
+2
+00:03:50,340 --> 00:03:51,120
+It's a new day.
+新的一天开始了。
+
+3
+00:03:51,780 --> 00:03:53,340
+I just had a late start.
+我今天出发得晚了。
+
+4
+00:03:55,740 --> 00:03:59,460
+Um, had breakfast. I got golden milk.
+嗯，吃了早饭，喝了姜黄奶。
+
+5
+00:03:59,640 --> 00:04:01,740
+Tastes so good.
+太好喝了。
+```
 
 ## FAQ
 
@@ -73,7 +146,9 @@ CapCut, Final Cut, YouTube, and most players/editors.
 **How is it more accurate than automatic captions in my editor?**
 A better multilingual speech model, a two‑stage (rules + AI) line segmenter
 grounded in a video summary, and an audio‑synced human correction step together
-cut manual cleanup from ~50% of lines to ~5%.
+cut manual cleanup from ~50% of lines to ~5%. The advantage is biggest on
+**noisy or outdoor audio** — wind, traffic, background music, or unclear/accented
+speech — where built‑in editor captioners struggle most.
 
 **Is my audio kept private?**
 Audio is processed only to produce your transcript and subtitles; it isn't
