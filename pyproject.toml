@@ -26,4 +26,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["app", "dual_caption", "json_to_srt", "transcribe"]
+py-modules = ["app", "dual_caption", "json_to_srt", "transcribe", "retime", "feedback", "i18n"]

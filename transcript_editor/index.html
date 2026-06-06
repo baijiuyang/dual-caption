@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: transparent;
+      --line-bg: rgba(128, 128, 128, 0.08);
+      --line-active-bg: rgba(255, 196, 0, 0.22);
+      --line-active-border: #f5a623;
+      --line-edited-border: #4a90d9;
+      --muted: #888;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      background: var(--bg);
+    }
+    #player {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 6px 0 10px;
+      background: var(--bg);
+      backdrop-filter: blur(2px);
+    }
+    audio { width: 100%; }
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    #apply {
+      background: #ff4b4b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #apply:hover { filter: brightness(1.05); }
+    #status { color: var(--muted); font-size: 13px; }
+    #counter {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    #lines {
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .line {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 6px 8px;
+      margin: 4px 0;
+      border-radius: 6px;
+      background: var(--line-bg);
+      border-left: 3px solid transparent;
+      transition: background 0.15s ease;
+    }
+    .line.active {
+      background: var(--line-active-bg);
+      border-left-color: var(--line-active-border);
+    }
+    .line.edited .text { border-left: 2px solid var(--line-edited-border); padding-left: 6px; }
+    .seek {
+      flex: 0 0 auto;
+      cursor: pointer;
+      user-select: none;
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      padding-top: 3px;
+      min-width: 86px;
+    }
+    .seek:hover { color: #ff4b4b; }
+    .lineno {
+      flex: 0 0 auto;
+      min-width: 2.4em;
+      text-align: right;
+      padding-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+    }
+    .line.active .lineno { color: var(--line-active-border); font-weight: 700; }
+    .text {
+      flex: 1 1 auto;
+      outline: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.4;
+      min-height: 1.4em;
+    }
+    .text:focus { background: rgba(128,128,128,0.10); border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="player">
+      <audio id="audio" controls preload="metadata"></audio>
+      <div id="toolbar">
+        <button id="apply">Apply corrections</button>
+        <span id="status"></span>
+        <span id="counter"></span>
+      </div>
+    </div>
+    <div id="lines"></div>
+  </div>
+
+  <script>
+    // ---- Streamlit static-component protocol ----
+    function sendMessageToStreamlitClient(type, data) {
+      const out = Object.assign({ isStreamlitMessage: true, type: type }, data);
+      window.parent.postMessage(out, "*");
+    }
+    function setComponentReady() {
+      sendMessageToStreamlitClient("streamlit:componentReady", { apiVersion: 1 });
+    }
+    function setFrameHeight(height) {
+      sendMessageToStreamlitClient("streamlit:setFrameHeight", { height: height });
+    }
+    function setComponentValue(value) {
+      sendMessageToStreamlitClient("streamlit:setComponentValue", { value: value, dataType: "json" });
+    }
+
+    const audio = document.getElementById("audio");
+    const linesEl = document.getElementById("lines");
+    const statusEl = document.getElementById("status");
+    const counterEl = document.getElementById("counter");
+    const applyBtn = document.getElementById("apply");
+
+    const DEFAULT_LABELS = {
+      apply: "Apply corrections",
+      play_from: "Play from here",
+      counter_active: "Line {i} / {n}",
+      counter_idle: "{n} lines",
+      applied_edited: "Applied — {n} line(s) edited. See download / Step 3 below.",
+      applied_none: "Applied — no changes detected.",
+    };
+    let labels = DEFAULT_LABELS;
+
+    function fmtTpl(tpl, vars) {
+      return String(tpl).replace(/\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : `{${k}}`));
+    }
+
+    let lines = [];          // [{index, start_ms, end_ms, text}]
+    let original = [];       // original texts, to detect edits
+    let rowEls = [];         // div.line elements
+    let textEls = [];        // div.text elements
+    let activeIdx = -1;
+    let rendered = false;
+
+    function fmt(ms) {
+      const t = Math.max(0, ms) / 1000;
+      const m = Math.floor(t / 60);
+      const s = Math.floor(t % 60);
+      const cs = Math.floor((t * 100) % 100);
+      return `${m}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+    }
+
+    function markEdited(i) {
+      const changed = (textEls[i].innerText.trim() !== original[i].trim());
+      rowEls[i].classList.toggle("edited", changed);
+    }
+
+    function updateCounter() {
+      const total = lines.length;
+      counterEl.textContent = activeIdx >= 0
+        ? fmtTpl(labels.counter_active, { i: activeIdx + 1, n: total })
+        : fmtTpl(labels.counter_idle, { n: total });
+    }
+
+    function applyLabels() {
+      applyBtn.textContent = labels.apply;
+      document.querySelectorAll(".seek").forEach((el) => { el.title = labels.play_from; });
+      updateCounter();
+    }
+
+    function buildRows() {
+      linesEl.innerHTML = "";
+      rowEls = [];
+      textEls = [];
+      lines.forEach((ln, i) => {
+        const row = document.createElement("div");
+        row.className = "line";
+
+        const num = document.createElement("div");
+        num.className = "lineno";
+        num.textContent = String(i + 1);
+
+        const seek = document.createElement("div");
+        seek.className = "seek";
+        seek.textContent = "▶ " + fmt(ln.start_ms);
+        seek.title = labels.play_from;
+        seek.addEventListener("click", () => {
+          audio.currentTime = ln.start_ms / 1000;
+          audio.play();
+        });
+
+        const txt = document.createElement("div");
+        txt.className = "text";
+        txt.contentEditable = "true";
+        txt.spellcheck = false;
+        txt.innerText = ln.text;
+        txt.addEventListener("input", () => markEdited(i));
+
+        row.appendChild(num);
+        row.appendChild(seek);
+        row.appendChild(txt);
+        linesEl.appendChild(row);
+        rowEls.push(row);
+        textEls.push(txt);
+      });
+      updateCounter();
+    }
+
+    function highlight() {
+      const ms = audio.currentTime * 1000;
+      let idx = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (ms >= lines[i].start_ms && ms < lines[i].end_ms) { idx = i; break; }
+        if (ms < lines[i].start_ms) { break; }   // lines are ordered; gap before this line
+      }
+      if (idx === activeIdx) return;
+      if (activeIdx >= 0 && rowEls[activeIdx]) rowEls[activeIdx].classList.remove("active");
+      activeIdx = idx;
+      if (idx >= 0 && rowEls[idx]) {
+        rowEls[idx].classList.add("active");
+        if (document.activeElement !== textEls[idx]) {
+          rowEls[idx].scrollIntoView({ block: "nearest" });
+        }
+      }
+      updateCounter();
+    }
+    audio.addEventListener("timeupdate", highlight);
+
+    applyBtn.addEventListener("click", () => {
+      const payload = {
+        nonce: Date.now(),
+        lines: lines.map((ln, i) => ({ index: ln.index, text: textEls[i].innerText })),
+      };
+      setComponentValue(payload);
+      const n = payload.lines.filter((l, i) => l.text.trim() !== original[i].trim()).length;
+      statusEl.textContent = n
+        ? fmtTpl(labels.applied_edited, { n })
+        : labels.applied_none;
+    });
+
+    function onRender(event) {
+      if (!event.data || event.data.type !== "streamlit:render") return;
+      const args = event.data.args || {};
+
+      // Labels can change (language switch) without rebuilding rows.
+      if (args.labels) labels = args.labels;
+      // Audio: set once.
+      if (!rendered && args.audio) {
+        audio.src = args.audio;
+      }
+      // Lines: build once (avoid clobbering in-progress edits on reruns).
+      if (!rendered && Array.isArray(args.lines)) {
+        lines = args.lines;
+        original = lines.map((l) => l.text);
+        buildRows();
+        rendered = true;
+      }
+      applyLabels();
+      setFrameHeight(document.documentElement.scrollHeight);
+    }
+
+    window.addEventListener("message", onRender);
+    setComponentReady();
+    window.addEventListener("load", () => setTimeout(() => setFrameHeight(document.documentElement.scrollHeight), 50));
+  </script>
+</body>
+</html>

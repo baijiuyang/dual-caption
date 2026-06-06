@@ -58,6 +58,7 @@ class Token:
     ends_hard: bool  # text ends with hard punctuation (sentence terminator)
     ends_soft: bool  # text ends with soft punctuation (clause separator)
     is_pure_punct: bool  # stripped text contains only punctuation
+    raw: dict | None = None  # original Soniox token dict (preserves confidence, etc.)
 
 
 @dataclass
@@ -120,6 +121,7 @@ def _normalize_tokens(raw_tokens: list[dict]) -> list[Token]:
                 ends_hard=ends_hard,
                 ends_soft=ends_soft,
                 is_pure_punct=is_pure_punct,
+                raw=t,
             )
         )
     return tokens

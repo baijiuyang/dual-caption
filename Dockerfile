@@ -11,7 +11,8 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
-COPY app.py dual_caption.py json_to_srt.py transcribe.py ./
+COPY app.py dual_caption.py json_to_srt.py transcribe.py retime.py feedback.py i18n.py ./
+COPY transcript_editor ./transcript_editor
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
