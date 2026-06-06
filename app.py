@@ -168,11 +168,19 @@ st.markdown(
     .st-key-floatbar {
         position: fixed; top: 3.25rem; left: 1rem; width: auto; z-index: 1000001;
     }
+    /* Force the two buttons onto one row regardless of which element carries
+       the key class (vertical block vs. wrapper across Streamlit versions). */
+    .st-key-floatbar,
+    .st-key-floatbar > div,
     .st-key-floatbar [data-testid="stVerticalBlock"] {
-        flex-direction: row; gap: 0.5rem; width: auto; align-items: center;
+        display: flex !important; flex-direction: row !important; flex-wrap: nowrap;
+        gap: 0.5rem; width: auto; align-items: center;
     }
     .st-key-floatbar [data-testid="stElementContainer"],
     .st-key-floatbar [data-testid="stButton"] { width: auto; }
+    /* Language switch on the left, feedback on its right. */
+    .st-key-lang_toggle { order: 1; }
+    .st-key-feedback_fab { order: 2; }
     .st-key-lang_toggle button {
         border-radius: 999px; padding: 0.45rem 1.0rem; font-weight: 700;
         background: rgba(128, 128, 128, 0.18); border: 1px solid rgba(128, 128, 128, 0.35);
